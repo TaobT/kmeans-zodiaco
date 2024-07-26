@@ -1,3 +1,4 @@
+from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 import streamlit as st
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -7,6 +8,7 @@ from utils.clustering import apply_kmeans
 from utils.export import export_to_excel, export_to_pdf
 
 def main():
+    uploaded_file = None  # Initialize uploaded_file
     st.title("Aplicación de Clustering con K-means")
 
     menu = ["Inicio", "Cuestionario", "Análisis K-means"]
@@ -58,17 +60,17 @@ def main():
         healthiness = st.selectbox("¿Te consideras una persona saludable?", ["Sí", "No"])
 
         # Creencias y valores
-        astrology_belief = st.selectbox("¿Crees en la astrología?", ["Sí", "No"])
-        religiosity = st.selectbox("¿Te consideras una persona religiosa?", ["Sí", "No"])
-        spirituality = st.selectbox("¿Te consideras una persona espiritual?", ["Sí", "No"])
+        astrology_belief = st.selectbox("¿Crees en la astrología?", ["Si", "No"])
+        religiosity = st.selectbox("¿Te consideras una persona religiosa?", ["Si", "No"])
+        spirituality = st.selectbox("¿Te consideras una persona espiritual?", ["Si", "No"])
         family_importance = st.selectbox("¿Qué tan importante es para ti la familia?", 
                                         ["Muy importante", "Importante", "Poco importante", "Nada importante"])
         work_importance = st.selectbox("¿Qué tan importante es para ti el trabajo?", 
                                     ["Muy importante", "Importante", "Poco importante", "Nada importante"])
 
         # Habilidades y conocimientos
-        languages = st.selectbox("¿Hablas más de un idioma?", ["Sí", "No"])
-        tech_savvy = st.selectbox("¿Te consideras una persona tecnológica?", ["Sí", "No"])
+        languages = st.selectbox("¿Hablas más de un idioma?", ["Si", "No"])
+        tech_savvy = st.selectbox("¿Te consideras una persona tecnológica?", ["Si", "No"])
         reading = st.selectbox("¿Te gusta leer?", ["Sí", "No"])
 
         # Vida sexual
@@ -79,87 +81,121 @@ def main():
                                         ["Diariamente", "Semanalmente", "Mensualmente", "Raramente", "Nunca"])
         sexual_satisfaction = st.selectbox("¿Estás satisfecho/a con tu vida sexual?", 
                                         ["Muy satisfecho/a", "Satisfecho/a", "Neutral", "Insatisfecho/a", "Muy insatisfecho/a"])
-        contraceptive_use = st.selectbox("¿Usas métodos anticonceptivos durante las relaciones sexuales?", 
-                                        ["Siempre", "A menudo", "A veces", "Raramente", "Nunca"])
         sexual_communication_importance = st.selectbox("¿Consideras importante la comunicación en tu vida sexual?", 
                                                     ["Muy importante", "Importante", "Poco importante", "Nada importante"])
         sexual_comfort = st.selectbox("¿Te sientes cómodo/a hablando de temas sexuales con tu(s) pareja(s)?", ["Sí", "No"])
-
-    if st.button("Enviar"):
-        user_data = {
-            "full_name": full_name,
-            "zodiac_sign": zodiac_sign,
-            "age_range": age_range,
-            "gender": gender,
-            "education_level": education_level,
-            "extroversion": extroversion,
-            "punctuality": punctuality,
-            "organization": organization,
-            "risk_taking": risk_taking,
-            "creativity": creativity,
-            "music_preference": music_preference,
-            "movie_genre": movie_genre,
-            "sport_preference": sport_preference,
-            "food_preference": food_preference,
-            "sleep_hours": sleep_hours,
-            "exercise": exercise,
-            "smoking": smoking,
-            "alcohol": alcohol,
-            "healthiness": healthiness,
-            "astrology_belief": astrology_belief,
-            "religiosity": religiosity,
-            "spirituality": spirituality,
-            "family_importance": family_importance,
-            "work_importance": work_importance,
-            "languages": languages,
-            "tech_savvy": tech_savvy,
-            "reading": reading,
-            "sexually_active": sexually_active,
-            "sexual_partners": sexual_partners,
-            "sexual_frequency": sexual_frequency,
-            "sexual_satisfaction": sexual_satisfaction,
-            "contraceptive_use": contraceptive_use,
-            "sexual_communication_importance": sexual_communication_importance,
-            "sexual_comfort": sexual_comfort,
-        }
-        df = pd.DataFrame([user_data])
-        st.write(df)
-        st.success("Datos enviados con éxito.")
+        if st.button("Enviar"):
+            user_data = {
+                "full_name": full_name,
+                "zodiac_sign": zodiac_sign,
+                "age_range": age_range,
+                "gender": gender,
+                "education_level": education_level,
+                "extroversion": extroversion,
+                "punctuality": punctuality,
+                "organization": organization,
+                "risk_taking": risk_taking,
+                "creativity": creativity,
+                "music_preference": music_preference,
+                "movie_genre": movie_genre,
+                "sport_preference": sport_preference,
+                "food_preference": food_preference,
+                "sleep_hours": sleep_hours,
+                "exercise": exercise,
+                "smoking": smoking,
+                "alcohol": alcohol,
+                "healthiness": healthiness,
+                "astrology_belief": astrology_belief,
+                "religiosity": religiosity,
+                "spirituality": spirituality,
+                "family_importance": family_importance,
+                "work_importance": work_importance,
+                "languages": languages,
+                "tech_savvy": tech_savvy,
+                "reading": reading,
+                "sexually_active": sexually_active,
+                "sexual_partners": sexual_partners,
+                "sexual_frequency": sexual_frequency,
+                "sexual_satisfaction": sexual_satisfaction,
+                "sexual_communication_importance": sexual_communication_importance,
+                "sexual_comfort": sexual_comfort,
+            }
+            df = pd.DataFrame([user_data])
+            # Exportar a CSV agregandolos al final del archivo
+            with open("user_data.csv", "a") as f:
+                df.to_csv(f, header=f.tell()==0, index=False, encoding='latin1')
+            st.success("Datos enviados con éxito.")
 
     elif choice == "Análisis K-means":
         st.subheader("Análisis K-means")
-    st.write("Selecciona las variables de interés y aplica el algoritmo K-means.")
+        st.write("Sube el archivo CSV con los datos recolectados para aplicar K-means.")
 
-    uploaded_file = st.file_uploader("Cargar archivo CSV", type=["csv"])
-    if uploaded_file:
-        data = pd.read_csv(uploaded_file)
-        st.write("Datos cargados:", data.head())
+        uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
-        if st.checkbox("Mostrar todas las columnas"):
-            st.write(data.columns.tolist())
+        if uploaded_file is not None:
+            data = pd.read_csv(uploaded_file, encoding='latin1')  # Specify encoding
 
-        selected_columns = st.multiselect("Selecciona las variables para el clustering", data.columns.tolist())
-        if st.button("Aplicar K-means"):
-            if selected_columns:
-                clusters, centroids = apply_kmeans(data[selected_columns])
-                st.write("Clusters generados:")
-                st.write(clusters)
+            st.write("Vista previa de los datos:")
+            st.dataframe(data.head())
 
-                # Visualización de resultados
-                st.write("Visualización de los clusters:")
-                sns.pairplot(data[selected_columns + ['cluster']])
-                st.pyplot()
+            # Transformar variables categóricas y ordinales
+            one_hot_columns = ['zodiac_sign', 'gender', 'music_preference', 'movie_genre', 'sport_preference', 'food_preference']
+            data = pd.get_dummies(data, columns=one_hot_columns, drop_first=True)
 
-                # Exportar resultados
-                if st.button("Exportar resultados a Excel"):
-                    export_to_excel(data, clusters, "resultados.xlsx")
-                    st.success("Resultados exportados a resultados.xlsx")
+            label_columns = ['education_level', 'extroversion', 'organization', 'risk_taking', 'creativity', 'exercise', 'smoking', 'alcohol', 'healthiness', 'astrology_belief', 'religiosity', 'spirituality', 'languages', 'tech_savvy', 'reading', 'sexually_active', 'sexual_comfort']
+            label_encoder = LabelEncoder()
+            for col in label_columns:
+                data[col] = label_encoder.fit_transform(data[col])
 
-                if st.button("Exportar resultados a PDF"):
-                    export_to_pdf(data, clusters, "resultados.pdf")
-                    st.success("Resultados exportados a resultados.pdf")
-            else:
-                st.warning("Por favor, selecciona al menos una variable.")
+            ordinal_columns = {
+                'age_range': ['Menos de 18 años', '18-25 años', '26-35 años', '36-45 años', 'Más de 45 años'],
+                'punctuality': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
+                'sleep_hours': ['Menos de 5 horas', '5-7 horas', '7-9 horas', 'Más de 9 horas'],
+                'family_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
+                'work_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
+                'sexual_partners': ['Ninguna', '1', '2-3', '4-5', 'Más de 5'],
+                'sexual_frequency': ['Nunca', 'Raramente', 'Mensualmente', 'Semanalmente', 'Diariamente'],
+                'sexual_satisfaction': ['Muy insatisfecho/a', 'Insatisfecho/a', 'Neutral', 'Satisfecho/a', 'Muy satisfecho/a'],
+                'sexual_communication_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante']
+            }
+
+            for col, categories in ordinal_columns.items():
+                ordinal_encoder = OrdinalEncoder(categories=[categories])
+                data[col] = ordinal_encoder.fit_transform(data[[col]])
+
+            st.write("Vista previa de los datos transformados:")
+            st.dataframe(data.head())
+
+            st.write("Selecciona las variables para el clustering:")
+            selected_columns = st.multiselect("Variables", data.columns.tolist())
+            num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=3)
+
+            if st.button("Aplicar K-means"):
+                if selected_columns:
+                    try:
+                        kmeans = KMeans(n_clusters=num_clusters)
+                        clusters = kmeans.fit_predict(data[selected_columns])
+                        data['Cluster'] = clusters
+
+                        st.write("Resultados de K-means:")
+                        st.dataframe(data.head())
+
+                        fig, ax = plt.subplots()
+                        sns.scatterplot(data=data, x=selected_columns[0], y=selected_columns[1], hue='Cluster', palette='viridis', ax=ax)
+                        plt.title("Clusters")
+                        st.pyplot(fig)
+
+                        st.write("Exportar resultados:")
+                        if st.button("Exportar a Excel"):
+                            export_to_excel(data, "resultados.xlsx")
+                            st.success("Resultados exportados a resultados.xlsx")
+                        if st.button("Exportar a PDF"):
+                            export_to_pdf(data, clusters, "resultados.pdf")
+                            st.success("Resultados exportados a resultados.pdf")
+                    except Exception as e:
+                        st.error(f"Error al aplicar K-means: {e}")
+                else:
+                    st.warning("Por favor, selecciona al menos una variable para el clustering.")
 
 if __name__ == "__main__":
     main()
