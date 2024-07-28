@@ -239,41 +239,47 @@ def main():
                     pdf.set_font("Arial", size=12)
                     pdf.cell(200, 10, txt="Resultados de K-means", ln=True, align='C')
                     pdf.ln(20)
-                    
+
                     # Save plot to a temporary file
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
                         plt.savefig(tmpfile.name, format="png")
                         pdf.image(tmpfile.name, x=10, y=30, w=180)
-                    
+
                     pdf.ln(100)  # Adjust this value based on the height of your image
-                    pdf.add_page()  # Add a new page for the table
-                    pdf.set_font("Arial", size=8)  # Reduce font size
-                    
+                    pdf.set_font("Arial", size=6)  # Reduce font size further
+
                     # Calculate column width
                     page_width = pdf.w - 20  # Page width minus margins
-                    col_width = page_width / (len(data.columns) + 1)  # +1 for the index column
-                    
-                    # Add table header
-                    pdf.cell(col_width, 10, 'Index', 1)
-                    for col in data.columns:
-                        pdf.cell(col_width, 10, col, 1)
-                    pdf.ln()
-                    
-                    # Add table rows
-                    row_height = 10
-                    max_rows_per_page = int((pdf.h - 20) / row_height) - 2  # Adjust for margins and header
-                    for i in range(len(data)):
-                        if i % max_rows_per_page == 0 and i != 0:
-                            pdf.add_page()
-                            pdf.cell(col_width, 10, 'Index', 1)
-                            for col in data.columns:
-                                pdf.cell(col_width, 10, col, 1)
-                            pdf.ln()
-                        pdf.cell(col_width, 10, str(i), 1)
-                        for col in data.columns:
-                            pdf.cell(col_width, 10, str(data.iloc[i][col]), 1)
+                    col_width = page_width / 8  # 7 columns + 1 for the index column
+
+                    # Function to add table header
+                    def add_table_header(columns):
+                        pdf.cell(col_width, 6, 'Index', 1)
+                        for col in columns:
+                            pdf.cell(col_width, 6, col, 1)
                         pdf.ln()
-                    
+
+                    # Function to add table rows
+                    def add_table_rows(columns):
+                        row_height = 6  # Reduce row height
+                        max_rows_per_page = int((pdf.h - 20) / row_height) - 2  # Adjust for margins and header
+                        for i in range(len(data)):
+                            if i % max_rows_per_page == 0 and i != 0:
+                                pdf.add_page()
+                                add_table_header(columns)
+                            pdf.cell(col_width, 6, str(i), 1)
+                            for col in columns:
+                                pdf.cell(col_width, 6, str(data.iloc[i][col]), 1)
+                            pdf.ln()
+
+                    # Split columns into groups of 7
+                    columns = data.columns.tolist()
+                    for i in range(0, len(columns), 7):
+                        pdf.add_page()
+                        current_columns = columns[i:i+7]
+                        add_table_header(current_columns)
+                        add_table_rows(current_columns)
+
                     pdf_output = "resultados.pdf"
                     pdf.output(pdf_output)
                     st.success("Resultados exportados a resultados.pdf")
