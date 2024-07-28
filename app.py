@@ -1,3 +1,4 @@
+from io import BytesIO
 from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 import streamlit as st
 import pandas as pd
@@ -5,7 +6,9 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import seaborn as sns
 from utils.clustering import apply_kmeans
-from utils.export import export_to_excel, export_to_pdf
+from utils.export import export_to_excel
+from fpdf import FPDF
+import tempfile
 
 def main():
     uploaded_file = None  # Initialize uploaded_file
@@ -167,35 +170,113 @@ def main():
             st.dataframe(data.head())
 
             st.write("Selecciona las variables para el clustering:")
-            selected_columns = st.multiselect("Variables", data.columns.tolist())
-            num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=3)
 
-            if st.button("Aplicar K-means"):
+            # Initialize session state for selected columns
+            if 'selected_columns' not in st.session_state:
+                st.session_state.selected_columns = []
+
+            # Checkbox to select all variables
+            select_all = st.checkbox("Seleccionar todas las variables", value=len(st.session_state.selected_columns) == len(data.columns))
+
+            # Update selected columns based on checkbox
+            if select_all:
+                st.session_state.selected_columns = data.columns.tolist()
+            else:
+                if len(st.session_state.selected_columns) == len(data.columns):
+                    st.session_state.selected_columns = []
+
+            # Multiselect for variable selection
+            selected_columns = st.multiselect("Variables", data.columns.tolist(), default=st.session_state.selected_columns)
+
+            # Update session state based on multiselect
+            st.session_state.selected_columns = selected_columns
+
+            # Update checkbox based on multiselect
+            if len(selected_columns) == len(data.columns):
+                select_all = True
+            else:
+                select_all = False
+
+            # Initialize session state for clustering results
+            if 'clusters' not in st.session_state:
+                st.session_state.clusters = None
+            if 'num_clusters' not in st.session_state:
+                st.session_state.num_clusters = 3
+
+            # Slider for number of clusters
+            num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=st.session_state.num_clusters)
+            st.session_state.num_clusters = num_clusters
+
+            # Button to apply K-means
+            aplicar_kmeans = st.button("Aplicar K-means")
+            if aplicar_kmeans:
                 if selected_columns:
                     try:
                         kmeans = KMeans(n_clusters=num_clusters)
                         clusters = kmeans.fit_predict(data[selected_columns])
                         data['Cluster'] = clusters
-
-                        st.write("Resultados de K-means:")
-                        st.dataframe(data.head())
-
-                        fig, ax = plt.subplots()
-                        sns.scatterplot(data=data, x=selected_columns[0], y=selected_columns[1], hue='Cluster', palette='viridis', ax=ax)
-                        plt.title("Clusters")
-                        st.pyplot(fig)
-
-                        st.write("Exportar resultados:")
-                        if st.button("Exportar a Excel"):
-                            export_to_excel(data, "resultados.xlsx")
-                            st.success("Resultados exportados a resultados.xlsx")
-                        if st.button("Exportar a PDF"):
-                            export_to_pdf(data, clusters, "resultados.pdf")
-                            st.success("Resultados exportados a resultados.pdf")
+                        st.session_state.clusters = clusters
                     except Exception as e:
                         st.error(f"Error al aplicar K-means: {e}")
                 else:
                     st.warning("Por favor, selecciona al menos una variable para el clustering.")
+
+            # Display clustering results if they exist in session state
+            if st.session_state.clusters is not None:
+                data['Cluster'] = st.session_state.clusters
+                st.write("Resultados de K-means:")
+                st.dataframe(data.head())
+
+                fig, ax = plt.subplots()
+                sns.scatterplot(data=data, x=selected_columns[0], y=selected_columns[1], hue='Cluster', palette='viridis', ax=ax)
+                plt.title("Clusters")
+                st.pyplot(fig)
+
+                st.write("Exportar resultados:")
+                if st.button("Exportar a PDF"):
+                    pdf = FPDF(orientation='L', unit='mm', format='A4')  # Set orientation to Landscape
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    pdf.cell(200, 10, txt="Resultados de K-means", ln=True, align='C')
+                    pdf.ln(20)
+                    
+                    # Save plot to a temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+                        plt.savefig(tmpfile.name, format="png")
+                        pdf.image(tmpfile.name, x=10, y=30, w=180)
+                    
+                    pdf.ln(100)  # Adjust this value based on the height of your image
+                    pdf.add_page()  # Add a new page for the table
+                    pdf.set_font("Arial", size=8)  # Reduce font size
+                    
+                    # Calculate column width
+                    page_width = pdf.w - 20  # Page width minus margins
+                    col_width = page_width / (len(data.columns) + 1)  # +1 for the index column
+                    
+                    # Add table header
+                    pdf.cell(col_width, 10, 'Index', 1)
+                    for col in data.columns:
+                        pdf.cell(col_width, 10, col, 1)
+                    pdf.ln()
+                    
+                    # Add table rows
+                    row_height = 10
+                    max_rows_per_page = int((pdf.h - 20) / row_height) - 2  # Adjust for margins and header
+                    for i in range(len(data)):
+                        if i % max_rows_per_page == 0 and i != 0:
+                            pdf.add_page()
+                            pdf.cell(col_width, 10, 'Index', 1)
+                            for col in data.columns:
+                                pdf.cell(col_width, 10, col, 1)
+                            pdf.ln()
+                        pdf.cell(col_width, 10, str(i), 1)
+                        for col in data.columns:
+                            pdf.cell(col_width, 10, str(data.iloc[i][col]), 1)
+                        pdf.ln()
+                    
+                    pdf_output = "resultados.pdf"
+                    pdf.output(pdf_output)
+                    st.success("Resultados exportados a resultados.pdf")
 
 if __name__ == "__main__":
     main()
