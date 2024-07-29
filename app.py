@@ -10,11 +10,66 @@ from utils.export import export_to_excel
 from fpdf import FPDF
 import tempfile
 
+def clean_unicode_errors(df):
+    # Función para reemplazar caracteres a utf-8 ignorando el header ignorando errores
+    for col in df.columns:
+        df[col] = df[col].apply(lambda x: x.encode('raw_unicode_escape').decode('utf-8', errors='ignore'))
+    return df
+
+def map_google_form_columns(df):
+    column_mapping = {
+        "Nombre": "full_name",
+        "Selecciona tu signo zodiacal": "zodiac_sign",
+        "¿Cuál es tu rango de edad?": "age_range",
+        "Selecciona tu genero": "gender",
+        "¿Cuál es tu nivel de educación?": "education_level",
+        "¿Te consideras una persona extrovertida o introvertida?": "extroversion",
+        "¿Qué tan importante es para ti la puntualidad?": "punctuality",
+        "¿Eres una persona organizada?": "organization",
+        "¿Te gusta tomar riesgos?": "risk_taking",
+        "¿Te consideras una persona creativa?": "creativity",
+        "¿Qué tipo de música prefieres?": "music_preference",
+        "¿Cuál es tu género de película favorito?": "movie_genre",
+        "¿Qué tipo de deporte prefieres?": "sport_preference",
+        "¿Qué tipo de comida prefieres?": "food_preference",
+        "En promedio ¿Cuántas horas duermes por noche?": "sleep_hours",
+        "¿Haces ejercicio regularmente?": "exercise",
+        "¿Fumas?": "smoking",
+        "¿Consumes alcohol?": "alcohol",
+        "¿Te consideras una persona saludable?": "healthiness",
+        "¿Crees en la astrología?": "astrology_belief",
+        "¿Crees en la religión?": "religiosity",
+        "¿Te consideras una persona espiritual?": "spirituality",
+        "¿Qué tan importante es para ti la familia?": "family_importance",
+        "¿Qué tan importante es para ti el trabajo?": "work_importance",
+        "¿Hablas más de un idioma?": "languages",
+        "¿Te consideras una persona tecnológica?": "tech_savvy",
+        "¿Te gusta leer?": "reading",
+        "¿Te consideras una persona sexualmente activa?": "sexually_active",
+        "¿Estás satisfecho/a con tu vida sexual?": "sexual_satisfaction",
+        "¿Consideras importante la comunicación en tu vida sexual?": "sexual_communication_importance"
+    }
+    
+    df = df.rename(columns=column_mapping)
+    
+    # Seleccionar solo las columnas mapeadas y en el orden deseado
+    columns_order = [
+        "full_name", "zodiac_sign", "age_range", "gender", "education_level", "extroversion",
+        "punctuality", "organization", "risk_taking", "creativity", "music_preference", 
+        "movie_genre", "sport_preference", "food_preference", "sleep_hours", "exercise", 
+        "smoking", "alcohol", "healthiness", "astrology_belief", "religiosity", "spirituality", 
+        "family_importance", "work_importance", "languages", "tech_savvy", "reading", 
+        "sexually_active", "sexual_satisfaction", "sexual_communication_importance"
+    ]
+    
+    df = df[columns_order]
+    return df
+
 def main():
     uploaded_file = None  # Initialize uploaded_file
     st.title("Aplicación de Clustering con K-means")
 
-    menu = ["Inicio", "Cuestionario", "Análisis K-means"]
+    menu = ["Inicio", "Cuestionario", "Procesamiento de Datos Google", "Análisis K-means"]
     choice = st.sidebar.selectbox("Menú", menu)
 
     if choice == "Inicio":
@@ -31,7 +86,7 @@ def main():
                                 ["Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo", 
                                     "Libra", "Escorpio", "Sagitario", "Capricornio", "Acuario", "Piscis"])
         age_range = st.selectbox("¿Cuál es tu rango de edad?", 
-                                ["Menos de 18 años", "18-25 años", "26-35 años", "36-45 años", "Más de 45 años"])
+                                ["Menos de 18 años", "18 a 25 años", "26 a 35 años", "36 a 45 años", "Más de 45 años"])
         gender = st.selectbox("¿Cuál es tu género?", ["Masculino", "Femenino", "No binario", "Prefiero no decirlo"])
         education_level = st.selectbox("¿Cuál es tu nivel de educación?", 
                                     ["Primaria", "Secundaria", "Preparatoria", "Universidad", "Postgrado"])
@@ -56,7 +111,7 @@ def main():
 
         # Estilo de vida
         sleep_hours = st.selectbox("¿Cuántas horas duermes en promedio por noche?", 
-                                ["Menos de 5 horas", "5-7 horas", "7-9 horas", "Más de 9 horas"])
+                                ["Menos de 5 horas", "5 a 7 horas", "7 a 9 horas", "Más de 9 horas"])
         exercise = st.selectbox("¿Haces ejercicio regularmente?", ["Sí", "No"])
         smoking = st.selectbox("¿Fumas?", ["Sí", "No"])
         alcohol = st.selectbox("¿Consumes alcohol?", ["Sí", "No"])
@@ -78,15 +133,10 @@ def main():
 
         # Vida sexual
         sexually_active = st.selectbox("¿Te consideras una persona sexualmente activa?", ["Sí", "No"])
-        sexual_partners = st.selectbox("¿Cuántas parejas sexuales has tenido en el último año?", 
-                                    ["Ninguna", "1", "2-3", "4-5", "Más de 5"])
-        sexual_frequency = st.selectbox("¿Con qué frecuencia tienes relaciones sexuales?", 
-                                        ["Diariamente", "Semanalmente", "Mensualmente", "Raramente", "Nunca"])
         sexual_satisfaction = st.selectbox("¿Estás satisfecho/a con tu vida sexual?", 
                                         ["Muy satisfecho/a", "Satisfecho/a", "Neutral", "Insatisfecho/a", "Muy insatisfecho/a"])
         sexual_communication_importance = st.selectbox("¿Consideras importante la comunicación en tu vida sexual?", 
                                                     ["Muy importante", "Importante", "Poco importante", "Nada importante"])
-        sexual_comfort = st.selectbox("¿Te sientes cómodo/a hablando de temas sexuales con tu(s) pareja(s)?", ["Sí", "No"])
         if st.button("Enviar"):
             user_data = {
                 "full_name": full_name,
@@ -117,17 +167,40 @@ def main():
                 "tech_savvy": tech_savvy,
                 "reading": reading,
                 "sexually_active": sexually_active,
-                "sexual_partners": sexual_partners,
-                "sexual_frequency": sexual_frequency,
                 "sexual_satisfaction": sexual_satisfaction,
                 "sexual_communication_importance": sexual_communication_importance,
-                "sexual_comfort": sexual_comfort,
             }
             df = pd.DataFrame([user_data])
             # Exportar a CSV agregandolos al final del archivo
             with open("user_data.csv", "a") as f:
-                df.to_csv(f, header=f.tell()==0, index=False, encoding='latin1')
+                df.to_csv(f, header=f.tell()==0, index=False, encoding='utf-8')
             st.success("Datos enviados con éxito.")
+
+    if choice == "Procesamiento de Datos Google":
+        st.subheader("Procesamiento de Datos Google")
+        st.write("Sube un archivo CSV exportado de Google Forms para su procesamiento.")
+
+        uploaded_file = st.file_uploader("Elige un archivo CSV", type="csv")
+
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+            st.write("Datos del archivo CSV subido:")
+            st.write(df.head())
+
+            # Limpiar errores de unicode
+            # df = clean_unicode_errors(df)
+
+            # Mapea las columnas del CSV al formato esperado
+            df = map_google_form_columns(df)
+            st.write("Datos después de mapear las columnas:")
+            st.write(df.head())
+
+            # Añade un botón para guardar el archivo CSV procesado
+            if st.button("Guardar CSV Procesado"):
+                buffer = BytesIO()
+                df.to_csv(buffer, index=False)
+                buffer.seek(0)
+                st.download_button(label="Descargar CSV Procesado", data=buffer, file_name="datos_procesados.csv", mime="text/csv")
 
     elif choice == "Análisis K-means":
         st.subheader("Análisis K-means")
@@ -136,7 +209,7 @@ def main():
         uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
         if uploaded_file is not None:
-            data = pd.read_csv(uploaded_file, encoding='latin1')  # Specify encoding
+            data = pd.read_csv(uploaded_file, encoding='utf-8')  # Specify encoding
 
             st.write("Vista previa de los datos:")
             st.dataframe(data.head())
@@ -145,19 +218,17 @@ def main():
             one_hot_columns = ['zodiac_sign', 'gender', 'music_preference', 'movie_genre', 'sport_preference', 'food_preference']
             data = pd.get_dummies(data, columns=one_hot_columns, drop_first=True)
 
-            label_columns = ['education_level', 'extroversion', 'organization', 'risk_taking', 'creativity', 'exercise', 'smoking', 'alcohol', 'healthiness', 'astrology_belief', 'religiosity', 'spirituality', 'languages', 'tech_savvy', 'reading', 'sexually_active', 'sexual_comfort']
+            label_columns = ['education_level', 'extroversion', 'organization', 'risk_taking', 'creativity', 'exercise', 'smoking', 'alcohol', 'healthiness', 'astrology_belief', 'religiosity', 'spirituality', 'languages', 'tech_savvy', 'reading', 'sexually_active']
             label_encoder = LabelEncoder()
             for col in label_columns:
                 data[col] = label_encoder.fit_transform(data[col])
 
             ordinal_columns = {
-                'age_range': ['Menos de 18 años', '18-25 años', '26-35 años', '36-45 años', 'Más de 45 años'],
+                'age_range': ['Menos de 18 años', '18 a 25 años', '26 a 35 años', '36 a 45 años', 'Más de 45 años'],
                 'punctuality': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
-                'sleep_hours': ['Menos de 5 horas', '5-7 horas', '7-9 horas', 'Más de 9 horas'],
+                'sleep_hours': ['Menos de 5 horas', '5 a 7 horas', '7 a 9 horas', 'Más de 9 horas'],
                 'family_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
                 'work_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
-                'sexual_partners': ['Ninguna', '1', '2-3', '4-5', 'Más de 5'],
-                'sexual_frequency': ['Nunca', 'Raramente', 'Mensualmente', 'Semanalmente', 'Diariamente'],
                 'sexual_satisfaction': ['Muy insatisfecho/a', 'Insatisfecho/a', 'Neutral', 'Satisfecho/a', 'Muy satisfecho/a'],
                 'sexual_communication_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante']
             }
@@ -212,8 +283,7 @@ def main():
             if aplicar_kmeans:
                 if selected_columns:
                     try:
-                        kmeans = KMeans(n_clusters=num_clusters)
-                        clusters = kmeans.fit_predict(data[selected_columns])
+                        clusters = apply_kmeans(data[selected_columns], num_clusters)
                         data['Cluster'] = clusters
                         st.session_state.clusters = clusters
                     except Exception as e:
