@@ -85,7 +85,7 @@ def main():
                                 ["Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo", 
                                     "Libra", "Escorpio", "Sagitario", "Capricornio", "Acuario", "Piscis"])
         age_range = st.selectbox("¿Cuál es tu rango de edad?", 
-                                ["Menos de 18 años", "18 a 25 años", "26 a 35 años", "36 a 45 años", "Más de 45 años"])
+                                ["Menor a 18 años", "18 a 25 años", "26 a 35 años", "36 a 45 años", "Más de 45 años"])
         gender = st.selectbox("¿Cuál es tu género?", ["Masculino", "Femenino", "No binario", "Prefiero no decirlo"])
         education_level = st.selectbox("¿Cuál es tu nivel de educación?", 
                                     ["Primaria", "Secundaria", "Preparatoria", "Universidad", "Postgrado"])
@@ -223,7 +223,7 @@ def main():
                 data[col] = label_encoder.fit_transform(data[col])
 
             ordinal_columns = {
-                'age_range': ['Menos de 18 años', '18 a 25 años', '26 a 35 años', '36 a 45 años', 'Más de 45 años'],
+                'age_range': ['Menor a 18 años', '18 a 25 años', '26 a 35 años', '36 a 45 años', 'Más de 45 años'],
                 'punctuality': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
                 'sleep_hours': ['Menos de 5 horas', '5 a 7 horas', '7 a 9 horas', 'Más de 9 horas'],
                 'family_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
@@ -277,9 +277,9 @@ def main():
             
             # Seleccion las variables en los ejes
             st.write("Selecciona las variables para los ejes X y Y:")
-            x_axis = st.selectbox("Eje X", selected_columns, index=0)
-            y_axis = st.selectbox("Eje Y", selected_columns, index=1)
-
+            if len(selected_columns) > 2:
+                x_axis = st.selectbox("Eje X", selected_columns, index=0)
+                y_axis = st.selectbox("Eje Y", selected_columns, index=1)
             # Slider for number of clusters
             num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=st.session_state.num_clusters)
             st.session_state.num_clusters = num_clusters
@@ -304,34 +304,58 @@ def main():
                 st.write("Resultados de K-means:")
                 st.dataframe(data.head())
 
-                fig, ax = plt.subplots()
+                # Crear las dos figuras
+                fig1, ax1 = plt.subplots()
+                fig2, ax2 = plt.subplots()
 
-                # Graficar los puntos de datos
-                scatter = ax.scatter(data[x_axis], data[y_axis], c=data['Cluster'], cmap='viridis')
-                ax.set_xlabel(x_axis)
-                ax.set_ylabel(y_axis)
+                # Graficar los puntos de datos y los centros de clústeres en fig1
+                scatter = ax1.scatter(data[x_axis], data[y_axis], c=data['Cluster'], cmap='viridis')
+                ax1.set_xlabel(x_axis)
+                ax1.set_ylabel(y_axis)
 
-                # Graficar los centros de clústeres
                 if 'centers' in st.session_state:
                     centers = st.session_state.centers
-                    ax.scatter(centers[:, data.columns.get_loc(x_axis)], centers[:, data.columns.get_loc(y_axis)], c='red', s=100, alpha=0.5, marker='X', label='Centroides')
-                    ax.legend()  # Añadir leyenda para los centroides
+                    ax1.scatter(centers[:, data.columns.get_loc(x_axis)], centers[:, data.columns.get_loc(y_axis)], c='red', s=100, alpha=0.5, marker='X', label='Centroides')
+                    ax1.legend()
 
-                # Mostrar el gráfico en Streamlit
-                st.pyplot(fig)
+                # Mostrar la gráfica en Streamlit
+                st.pyplot(fig1)
+
+                # Gráfico del método del codo en fig2
+                wcss = []
+                for i in range(1, 11):
+                    kmeans = KMeans(n_clusters=i, init='k-means++', max_iter=300, n_init=10, random_state=0)
+                    kmeans.fit(data[selected_columns])
+                    wcss.append(kmeans.inertia_)
+
+                ax2.plot(range(1, 11), wcss)
+                ax2.set_title('Método del Codo')
+                ax2.set_xlabel('Número de clústeres')
+                ax2.set_ylabel('WCSS')
+
+                # Mostrar la gráfica en Streamlit
+                st.pyplot(fig2)
 
                 st.write("Exportar resultados:")
                 if st.button("Exportar a PDF"):
-                    pdf = FPDF(orientation='L', unit='mm', format='A4')  # Set orientation to Landscape
+                    pdf = FPDF(orientation='L', unit='mm', format='A4')
                     pdf.add_page()
                     pdf.set_font("Arial", size=12)
                     pdf.cell(200, 10, txt="Resultados de K-means", ln=True, align='C')
                     pdf.ln(20)
 
-                    # Save plot to a temporary file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-                        plt.savefig(tmpfile.name, format="png")
-                        pdf.image(tmpfile.name, x=10, y=30, w=180)
+                    # Guardar las gráficas como archivos temporales
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile1:
+                        fig1.savefig(tmpfile1.name, format="png")
+                        pdf.image(tmpfile1.name, x=10, y=30, w=180)
+
+                    pdf.add_page()
+                    pdf.cell(200, 10, txt="Gráfico del Método del Codo", ln=True, align='C')
+                    pdf.ln(20)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile2:
+                        fig2.savefig(tmpfile2.name, format="png")
+                        pdf.image(tmpfile2.name, x=10, y=30, w=180)# Mostrar el gráfico en Streamlit
+               
 
                     pdf.ln(100)  # Adjust this value based on the height of your image
                     pdf.set_font("Arial", size=6)  # Reduce font size further
