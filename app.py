@@ -5,7 +5,6 @@ import pandas as pd
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 import seaborn as sns
-from utils.clustering import apply_kmeans
 from utils.export import export_to_excel
 from fpdf import FPDF
 import tempfile
@@ -273,6 +272,13 @@ def main():
                 st.session_state.clusters = None
             if 'num_clusters' not in st.session_state:
                 st.session_state.num_clusters = 3
+            if 'centers' not in st.session_state:
+                st.session_state.centers = None
+            
+            # Seleccion las variables en los ejes
+            st.write("Selecciona las variables para los ejes X y Y:")
+            x_axis = st.selectbox("Eje X", selected_columns, index=0)
+            y_axis = st.selectbox("Eje Y", selected_columns, index=1)
 
             # Slider for number of clusters
             num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=st.session_state.num_clusters)
@@ -283,23 +289,35 @@ def main():
             if aplicar_kmeans:
                 if selected_columns:
                     try:
-                        clusters = apply_kmeans(data[selected_columns], num_clusters)
-                        data['Cluster'] = clusters
-                        st.session_state.clusters = clusters
+                        kmeans = KMeans(n_clusters=num_clusters)
+                        data['Cluster'] = kmeans.fit_predict(data[selected_columns])
+                        st.session_state.clusters = data['Cluster']
+                        st.session_state.centers = kmeans.cluster_centers_
                     except Exception as e:
                         st.error(f"Error al aplicar K-means: {e}")
                 else:
                     st.warning("Por favor, selecciona al menos una variable para el clustering.")
 
             # Display clustering results if they exist in session state
-            if st.session_state.clusters is not None:
+            if st.session_state.clusters is not None and st.session_state.centers is not None:
                 data['Cluster'] = st.session_state.clusters
                 st.write("Resultados de K-means:")
                 st.dataframe(data.head())
 
                 fig, ax = plt.subplots()
-                sns.scatterplot(data=data, x=selected_columns[0], y=selected_columns[1], hue='Cluster', palette='viridis', ax=ax)
-                plt.title("Clusters")
+
+                # Graficar los puntos de datos
+                scatter = ax.scatter(data[x_axis], data[y_axis], c=data['Cluster'], cmap='viridis')
+                ax.set_xlabel(x_axis)
+                ax.set_ylabel(y_axis)
+
+                # Graficar los centros de clústeres
+                if 'centers' in st.session_state:
+                    centers = st.session_state.centers
+                    ax.scatter(centers[:, data.columns.get_loc(x_axis)], centers[:, data.columns.get_loc(y_axis)], c='red', s=100, alpha=0.5, marker='X', label='Centroides')
+                    ax.legend()  # Añadir leyenda para los centroides
+
+                # Mostrar el gráfico en Streamlit
                 st.pyplot(fig)
 
                 st.write("Exportar resultados:")
