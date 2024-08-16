@@ -1,70 +1,20 @@
 from io import BytesIO
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+import numpy as np
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import StandardScaler
 import streamlit as st
 import pandas as pd
-from sklearn.cluster import KMeans
+from sklearn.cluster import DBSCAN, KMeans
 import matplotlib.pyplot as plt
 import seaborn as sns
-from utils.export import export_to_excel
 from fpdf import FPDF
 import tempfile
 
-def clean_unicode_errors(df):
-    # Función para reemplazar caracteres a utf-8 ignorando el header ignorando errores
-    for col in df.columns:
-        df[col] = df[col].apply(lambda x: x.encode('raw_unicode_escape').decode('utf-8', errors='ignore'))
-    return df
-
-def map_google_form_columns(df):
-    column_mapping = {
-        "Nombre": "full_name",
-        "Selecciona tu signo zodiacal": "zodiac_sign",
-        "¿Cuál es tu rango de edad?": "age_range",
-        "Selecciona tu genero": "gender",
-        "¿Cuál es tu nivel de educación?": "education_level",
-        "¿Te consideras una persona extrovertida o introvertida?": "extroversion",
-        "¿Qué tan importante es para ti la puntualidad?": "punctuality",
-        "¿Eres una persona organizada?": "organization",
-        "¿Te gusta tomar riesgos?": "risk_taking",
-        "¿Te consideras una persona creativa?": "creativity",
-        "¿Qué tipo de música prefieres?": "music_preference",
-        "¿Cuál es tu género de película favorito?": "movie_genre",
-        "¿Qué tipo de deporte prefieres?": "sport_preference",
-        "¿Qué tipo de comida prefieres?": "food_preference",
-        "En promedio ¿Cuántas horas duermes por noche?": "sleep_hours",
-        "¿Haces ejercicio regularmente?": "exercise",
-        "¿Fumas?": "smoking",
-        "¿Consumes alcohol?": "alcohol",
-        "¿Te consideras una persona saludable?": "healthiness",
-        "¿Crees en la astrología?": "astrology_belief",
-        "¿Crees en la religión?": "religiosity",
-        "¿Te consideras una persona espiritual?": "spirituality",
-        "¿Qué tan importante es para ti la familia?": "family_importance",
-        "¿Qué tan importante es para ti el trabajo?": "work_importance",
-        "¿Hablas más de un idioma?": "languages",
-        "¿Te consideras una persona tecnológica?": "tech_savvy",
-        "¿Te gusta leer?": "reading",
-        "¿Te consideras una persona sexualmente activa?": "sexually_active",
-        "¿Estás satisfecho/a con tu vida sexual?": "sexual_satisfaction",
-        "¿Consideras importante la comunicación en tu vida sexual?": "sexual_communication_importance"
-    }
-    
-    df = df.rename(columns=column_mapping)
-    
-    # Seleccionar solo las columnas mapeadas y en el orden deseado
-    columns_order = [
-        "full_name", "zodiac_sign", "age_range", "gender", "education_level", "extroversion",
-        "punctuality", "organization", "risk_taking", "creativity", "music_preference", 
-        "movie_genre", "sport_preference", "food_preference", "sleep_hours", "exercise", 
-        "smoking", "alcohol", "healthiness", "astrology_belief", "religiosity", "spirituality", 
-        "family_importance", "work_importance", "languages", "tech_savvy", "reading", 
-        "sexually_active", "sexual_satisfaction", "sexual_communication_importance"
-    ]
-    
-    df = df[columns_order]
-    return df
-
 def main():
+    # Initialize data
+    if 'data' not in st.session_state:
+        st.session_state.data = None
+
     uploaded_file = None  # Initialize uploaded_file
     st.title("Aplicación de Clustering con K-means")
 
@@ -80,126 +30,74 @@ def main():
         st.write("Aquí estará el cuestionario para recolectar información del usuario.")
 
         # Información personal
-        full_name = st.text_input("Nombre completo")
         zodiac_sign = st.selectbox("Selecciona tu signo zodiacal", 
                                 ["Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo", 
                                     "Libra", "Escorpio", "Sagitario", "Capricornio", "Acuario", "Piscis"])
-        age_range = st.selectbox("¿Cuál es tu rango de edad?", 
-                                ["Menor a 18 años", "18 a 25 años", "26 a 35 años", "36 a 45 años", "Más de 45 años"])
-        gender = st.selectbox("¿Cuál es tu género?", ["Masculino", "Femenino", "No binario", "Prefiero no decirlo"])
-        education_level = st.selectbox("¿Cuál es tu nivel de educación?", 
-                                    ["Primaria", "Secundaria", "Preparatoria", "Universidad", "Postgrado"])
+        age = st.number_input("¿Cuál es tu de edad?", min_value=12, max_value=100, value=22)
+        gender = st.selectbox("¿Cuál es tu género?", ["Masculino", "Femenino"])
+        
+        # Slider de 1 a 10
+        responsabilidad_disciplina_tareas_diarias = st.slider("Me considero una persona muy responsable y disciplinada en mis tareas diarias", 1, 10, 5)
+        preferencia_horario_estructurado = st.slider("Prefiero seguir un horario estructurado en lugar de improvisar mis actividades diarias", 1, 10, 5)
 
-        # Personalidad y hábitos
-        extroversion = st.selectbox("¿Te consideras una persona extrovertida o introvertida?", ["Extrovertida", "Introvertida"])
-        punctuality = st.selectbox("¿Qué tan importante es para ti la puntualidad?", 
-                                ["Muy importante", "Importante", "Poco importante", "Nada importante"])
-        organization = st.selectbox("¿Te consideras una persona organizada?", ["Sí", "No"])
-        risk_taking = st.selectbox("¿Te gusta tomar riesgos?", ["Sí", "No"])
-        creativity = st.selectbox("¿Te consideras una persona creativa?", ["Sí", "No"])
+        adaptabilidad_cambios_variedad = st.slider("Me adapto fácilmente a los cambios y disfruto de la variedad en mi vida", 1, 10, 5)
+        comodidad_situaciones_nuevas = st.slider("Me siento cómodo en situaciones nuevas y desconocidas, y rápidamente encuentro la manera de ajustarme", 1, 10, 5)
 
-        # Preferencias y gustos
-        music_preference = st.selectbox("¿Qué tipo de música prefieres?", 
-                                        ["Pop", "Rock", "Clásica", "Jazz", "Electrónica", "Otro"])
-        movie_genre = st.selectbox("¿Cuál es tu género de película favorito?", 
-                                ["Acción", "Comedia", "Drama", "Ciencia ficción", "Terror", "Romance"])
-        sport_preference = st.selectbox("¿Qué tipo de deporte prefieres?", 
-                                        ["Fútbol", "Baloncesto", "Natación", "Correr", "No practico deportes"])
-        food_preference = st.selectbox("¿Qué tipo de comida prefieres?", 
-                                    ["Italiana", "Mexicana", "China", "Japonesa", "Americana"])
+        conexion_emocional_otros = st.slider("Siento una profunda conexión emocional con los demás y a menudo capto sus sentimientos", 1, 10, 5)
+        afectado_emociones_ajenas = st.slider("A menudo, las emociones de otras personas me afectan fuertemente, incluso cuando no me lo dicen directamente", 1, 10, 5)
 
-        # Estilo de vida
-        sleep_hours = st.selectbox("¿Cuántas horas duermes en promedio por noche?", 
-                                ["Menos de 5 horas", "5 a 7 horas", "7 a 9 horas", "Más de 9 horas"])
-        exercise = st.selectbox("¿Haces ejercicio regularmente?", ["Sí", "No"])
-        smoking = st.selectbox("¿Fumas?", ["Sí", "No"])
-        alcohol = st.selectbox("¿Consumes alcohol?", ["Sí", "No"])
-        healthiness = st.selectbox("¿Te consideras una persona saludable?", ["Sí", "No"])
+        motivacion_grandes_metas_liderazgo = st.slider("Me siento motivado a alcanzar grandes metas y disfruto liderar a otros hacia el éxito", 1, 10, 5)
+        iniciativa_proyectos_grupales = st.slider("Me gusta tomar la iniciativa en proyectos grupales y siento que tengo la habilidad de dirigir a los demás", 1, 10, 5)
 
-        # Creencias y valores
-        astrology_belief = st.selectbox("¿Crees en la astrología?", ["Si", "No"])
-        religiosity = st.selectbox("¿Te consideras una persona religiosa?", ["Si", "No"])
-        spirituality = st.selectbox("¿Te consideras una persona espiritual?", ["Si", "No"])
-        family_importance = st.selectbox("¿Qué tan importante es para ti la familia?", 
-                                        ["Muy importante", "Importante", "Poco importante", "Nada importante"])
-        work_importance = st.selectbox("¿Qué tan importante es para ti el trabajo?", 
-                                    ["Muy importante", "Importante", "Poco importante", "Nada importante"])
+        creatividad_expresion_artistica = st.slider("Me considero una persona muy creativa y disfruto expresar mis ideas de manera artística", 1, 10, 5)
+        placer_actividades_creativas = st.slider("Encuentro placer en actividades que me permiten ser creativo, como el arte, la música o la escritura", 1, 10, 5)
 
-        # Habilidades y conocimientos
-        languages = st.selectbox("¿Hablas más de un idioma?", ["Si", "No"])
-        tech_savvy = st.selectbox("¿Te consideras una persona tecnológica?", ["Si", "No"])
-        reading = st.selectbox("¿Te gusta leer?", ["Sí", "No"])
+        importancia_estabilidad_seguridad = st.slider("Para mí, es fundamental tener estabilidad y seguridad en mi vida personal y profesional", 1, 10, 5)
+        incomodidad_incertidumbre_cambios = st.slider("Me siento incómodo cuando enfrento incertidumbre o cambios inesperados en mi entorno", 1, 10, 5)
 
-        # Vida sexual
-        sexually_active = st.selectbox("¿Te consideras una persona sexualmente activa?", ["Sí", "No"])
-        sexual_satisfaction = st.selectbox("¿Estás satisfecho/a con tu vida sexual?", 
-                                        ["Muy satisfecho/a", "Satisfecho/a", "Neutral", "Insatisfecho/a", "Muy insatisfecho/a"])
-        sexual_communication_importance = st.selectbox("¿Consideras importante la comunicación en tu vida sexual?", 
-                                                    ["Muy importante", "Importante", "Poco importante", "Nada importante"])
+        compromiso_pasion_intensidad = st.slider("Cuando me comprometo con algo o alguien, lo hago con gran pasión e intensidad", 1, 10, 5)
+        dificultad_indiferencia_desapasionada = st.slider("Me cuesta ser indiferente o desapasionado; lo que hago, lo hago con todo mi ser", 1, 10, 5)
+
+        persona_optimista_lado_positivo = st.slider("Soy una persona optimista que siempre busca el lado positivo de las cosas", 1, 10, 5)
+        entusiasmo_enfrentar_desafios = st.slider("Enfrento los desafíos con entusiasmo y creo que siempre hay una solución positiva para cada problema", 1, 10, 5)
+
+        valoracion_independencia_libertad = st.slider("Valoro mi independencia y me siento incómodo cuando siento que pierdo mi libertad", 1, 10, 5)
+        preferencia_decisiones_propias = st.slider("Prefiero tomar decisiones por mí mismo y evito depender demasiado de los demás", 1, 10, 5)
+
+        detallista_precision_tareas = st.slider("Soy muy detallista y me preocupo por hacer las cosas de la manera más precisa posible", 1, 10, 5)
+        perfeccionamiento_detalles_proyectos = st.slider("Puedo pasar mucho tiempo perfeccionando los detalles de un proyecto antes de considerarlo terminado", 1, 10, 5)
+                
         if st.button("Enviar"):
             user_data = {
-                "full_name": full_name,
                 "zodiac_sign": zodiac_sign,
-                "age_range": age_range,
+                "age": age,
                 "gender": gender,
-                "education_level": education_level,
-                "extroversion": extroversion,
-                "punctuality": punctuality,
-                "organization": organization,
-                "risk_taking": risk_taking,
-                "creativity": creativity,
-                "music_preference": music_preference,
-                "movie_genre": movie_genre,
-                "sport_preference": sport_preference,
-                "food_preference": food_preference,
-                "sleep_hours": sleep_hours,
-                "exercise": exercise,
-                "smoking": smoking,
-                "alcohol": alcohol,
-                "healthiness": healthiness,
-                "astrology_belief": astrology_belief,
-                "religiosity": religiosity,
-                "spirituality": spirituality,
-                "family_importance": family_importance,
-                "work_importance": work_importance,
-                "languages": languages,
-                "tech_savvy": tech_savvy,
-                "reading": reading,
-                "sexually_active": sexually_active,
-                "sexual_satisfaction": sexual_satisfaction,
-                "sexual_communication_importance": sexual_communication_importance,
+                "responsabilidad_disciplina_tareas_diarias": responsabilidad_disciplina_tareas_diarias,
+                "preferencia_horario_estructurado": preferencia_horario_estructurado,
+                "adaptabilidad_cambios_variedad": adaptabilidad_cambios_variedad,
+                "comodidad_situaciones_nuevas": comodidad_situaciones_nuevas,
+                "conexion_emocional_otros": conexion_emocional_otros,
+                "afectado_emociones_ajenas": afectado_emociones_ajenas,
+                "motivacion_grandes_metas_liderazgo": motivacion_grandes_metas_liderazgo,
+                "iniciativa_proyectos_grupales": iniciativa_proyectos_grupales,
+                "creatividad_expresion_artistica": creatividad_expresion_artistica,
+                "placer_actividades_creativas": placer_actividades_creativas,
+                "importancia_estabilidad_seguridad": importancia_estabilidad_seguridad,
+                "incomodidad_incertidumbre_cambios": incomodidad_incertidumbre_cambios,
+                "compromiso_pasion_intensidad": compromiso_pasion_intensidad,
+                "dificultad_indiferencia_desapasionada": dificultad_indiferencia_desapasionada,
+                "persona_optimista_lado_positivo": persona_optimista_lado_positivo,
+                "entusiasmo_enfrentar_desafios": entusiasmo_enfrentar_desafios,
+                "valoracion_independencia_libertad": valoracion_independencia_libertad,
+                "preferencia_decisiones_propias": preferencia_decisiones_propias,
+                "detallista_precision_tareas": detallista_precision_tareas,
+                "perfeccionamiento_detalles_proyectos": perfeccionamiento_detalles_proyectos
             }
             df = pd.DataFrame([user_data])
             # Exportar a CSV agregandolos al final del archivo
             with open("user_data.csv", "a") as f:
                 df.to_csv(f, header=f.tell()==0, index=False, encoding='utf-8')
             st.success("Datos enviados con éxito.")
-
-    if choice == "Procesamiento de Datos Google":
-        st.subheader("Procesamiento de Datos Google")
-        st.write("Sube un archivo CSV exportado de Google Forms para su procesamiento.")
-
-        uploaded_file = st.file_uploader("Elige un archivo CSV", type="csv")
-
-        if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
-            st.write("Datos del archivo CSV subido:")
-            st.write(df.head())
-
-            # Limpiar errores de unicode
-            # df = clean_unicode_errors(df)
-
-            # Mapea las columnas del CSV al formato esperado
-            df = map_google_form_columns(df)
-            st.write("Datos después de mapear las columnas:")
-            st.write(df.head())
-
-            # Añade un botón para guardar el archivo CSV procesado
-            if st.button("Guardar CSV Procesado"):
-                buffer = BytesIO()
-                df.to_csv(buffer, index=False)
-                buffer.seek(0)
-                st.download_button(label="Descargar CSV Procesado", data=buffer, file_name="datos_procesados.csv", mime="text/csv")
 
     elif choice == "Análisis K-means":
         st.subheader("Análisis K-means")
@@ -209,34 +107,13 @@ def main():
 
         if uploaded_file is not None:
             data = pd.read_csv(uploaded_file, encoding='utf-8')  # Specify encoding
+            datos_originales = data.copy()
 
             st.write("Vista previa de los datos:")
             st.dataframe(data.head())
 
-            # Transformar variables categóricas y ordinales
-            one_hot_columns = ['zodiac_sign', 'gender', 'music_preference', 'movie_genre', 'sport_preference', 'food_preference']
-            data = pd.get_dummies(data, columns=one_hot_columns, drop_first=True)
+            data = zodiac_sing_and_gender_to_num(data)
 
-            label_columns = ['education_level', 'extroversion', 'organization', 'risk_taking', 'creativity', 'exercise', 'smoking', 'alcohol', 'healthiness', 'astrology_belief', 'religiosity', 'spirituality', 'languages', 'tech_savvy', 'reading', 'sexually_active']
-            label_encoder = LabelEncoder()
-            for col in label_columns:
-                data[col] = label_encoder.fit_transform(data[col])
-
-            ordinal_columns = {
-                'age_range': ['Menor a 18 años', '18 a 25 años', '26 a 35 años', '36 a 45 años', 'Más de 45 años'],
-                'punctuality': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
-                'sleep_hours': ['Menos de 5 horas', '5 a 7 horas', '7 a 9 horas', 'Más de 9 horas'],
-                'family_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
-                'work_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante'],
-                'sexual_satisfaction': ['Muy insatisfecho/a', 'Insatisfecho/a', 'Neutral', 'Satisfecho/a', 'Muy satisfecho/a'],
-                'sexual_communication_importance': ['Nada importante', 'Poco importante', 'Importante', 'Muy importante']
-            }
-
-            for col, categories in ordinal_columns.items():
-                ordinal_encoder = OrdinalEncoder(categories=[categories])
-                data[col] = ordinal_encoder.fit_transform(data[[col]])
-
-            st.write("Vista previa de los datos transformados:")
             st.dataframe(data.head())
 
             st.write("Selecciona las variables para el clustering:")
@@ -245,95 +122,170 @@ def main():
             if 'selected_columns' not in st.session_state:
                 st.session_state.selected_columns = []
 
-            # Checkbox to select all variables
-            select_all = st.checkbox("Seleccionar todas las variables", value=len(st.session_state.selected_columns) == len(data.columns))
-
-            # Update selected columns based on checkbox
-            if select_all:
-                st.session_state.selected_columns = data.columns.tolist()
-            else:
-                if len(st.session_state.selected_columns) == len(data.columns):
-                    st.session_state.selected_columns = []
-
             # Multiselect for variable selection
-            selected_columns = st.multiselect("Variables", data.columns.tolist(), default=st.session_state.selected_columns)
-
-            # Update session state based on multiselect
-            st.session_state.selected_columns = selected_columns
-
-            # Update checkbox based on multiselect
-            if len(selected_columns) == len(data.columns):
-                select_all = True
-            else:
-                select_all = False
-
-            # Initialize session state for clustering results
-            if 'clusters' not in st.session_state:
-                st.session_state.clusters = None
-            if 'num_clusters' not in st.session_state:
-                st.session_state.num_clusters = 3
-            if 'centers' not in st.session_state:
-                st.session_state.centers = None
+            selected_columns = st.multiselect("Variables", data.columns.tolist())
             
-            # Seleccion las variables en los ejes
-            st.write("Selecciona las variables para los ejes X y Y:")
-            if len(selected_columns) > 2:
-                x_axis = st.selectbox("Eje X", selected_columns, index=0)
-                y_axis = st.selectbox("Eje Y", selected_columns, index=1)
+            data_scaled = None
+
+            if(selected_columns):
+                data.dropna(inplace=True)
+                scaler = StandardScaler() 
+                data_t = scaler.fit_transform(data[selected_columns])
+                data_scaled = pd.DataFrame(data_t, columns=selected_columns)
+
+            st.write("Gráfico de Codo para seleccionar la cantidad de clusters optimos")
+            mostrar_codo = st.checkbox("Mostrar gráfico del Método del Codo")
+            if(mostrar_codo):
+                if(len(selected_columns) < 2):
+                    st.error("Por favor, selecciona al menos dos variables para el clustering.")
+                else:
+                    grafico_codo(data_t)
+
+
+
+
+
             # Slider for number of clusters
-            num_clusters = st.slider("Número de clusters", min_value=2, max_value=10, value=st.session_state.num_clusters)
+            num_clusters = st.slider("Número de clusters", min_value=2, max_value=12)
             st.session_state.num_clusters = num_clusters
 
-            # Button to apply K-means
-            aplicar_kmeans = st.button("Aplicar K-means")
-            if aplicar_kmeans:
-                if selected_columns:
-                    try:
-                        kmeans = KMeans(n_clusters=num_clusters)
-                        data['Cluster'] = kmeans.fit_predict(data[selected_columns])
-                        st.session_state.clusters = data['Cluster']
-                        st.session_state.centers = kmeans.cluster_centers_
-                    except Exception as e:
-                        st.error(f"Error al aplicar K-means: {e}")
-                else:
-                    st.warning("Por favor, selecciona al menos una variable para el clustering.")
+            if len(selected_columns) > 1:
+                try:
+                    kmeans = KMeans(n_clusters=num_clusters)
+                    kmeans.fit(data_t)
+                    data['kmeans_cluster'] = kmeans.labels_
+                    data_t_kmeans_excel = pd.DataFrame(data, columns=selected_columns + ['kmeans_cluster'])
+                    st.session_state.data = data
+                    st.session_state.selected_columns = selected_columns
+                    st.session_state.data_t = data_t
+                except Exception as e:
+                    st.error(f"Error al aplicar K-means: {e}")
+            else:
+                st.session_state.data = None
+                st.warning("Por favor, selecciona al menos una variable para el clustering.")
+
 
             # Display clustering results if they exist in session state
-            if st.session_state.clusters is not None and st.session_state.centers is not None:
-                data['Cluster'] = st.session_state.clusters
-                st.write("Resultados de K-means:")
-                st.dataframe(data.head())
-
+            if st.session_state.data is not None and st.session_state.data_t is not None:
+                data_t = st.session_state.data_t
+                data = st.session_state.data
                 # Crear las dos figuras
                 fig1, ax1 = plt.subplots()
                 fig2, ax2 = plt.subplots()
 
-                # Graficar los puntos de datos y los centros de clústeres en fig1
-                scatter = ax1.scatter(data[x_axis], data[y_axis], c=data['Cluster'], cmap='viridis')
-                ax1.set_xlabel(x_axis)
-                ax1.set_ylabel(y_axis)
+                # Gráfico de dispersión con los clusters
+                processed_columns = st.session_state.selected_columns
 
-                if 'centers' in st.session_state:
-                    centers = st.session_state.centers
-                    ax1.scatter(centers[:, data.columns.get_loc(x_axis)], centers[:, data.columns.get_loc(y_axis)], c='red', s=100, alpha=0.5, marker='X', label='Centroides')
-                    ax1.legend()
+                data_pca = None
 
-                # Mostrar la gráfica en Streamlit
-                st.pyplot(fig1)
+                if len(processed_columns) > 2:
+                    st.warning("Más de dos columnas seleccionadas. Puedes aplicar PCA para reducir a dos dimensiones o seleccionar dos columnas.")
+                    
+                    if(st.checkbox("Aplicar PCA")):
+                        pca = PCA(n_components=2)
+                        data_pca = pca.fit_transform(data_t)
 
-                # Gráfico del método del codo en fig2
-                wcss = []
-                for i in range(1, 11):
-                    kmeans = KMeans(n_clusters=i, init='k-means++', max_iter=300, n_init=10, random_state=0)
-                    kmeans.fit(data[selected_columns])
-                    wcss.append(kmeans.inertia_)
+                        # Obtener la matriz de covarianza
+                        data_t_df = pd.DataFrame(data_t)
+                        cov_matrix = data_t_df.cov()
 
-                ax2.plot(range(1, 11), wcss)
-                ax2.set_title('Método del Codo')
-                ax2.set_xlabel('Número de clústeres')
-                ax2.set_ylabel('WCSS')
+                        # Obtener los componentes principales (autovectores)
+                        components = pca.components_
+                        components_df = pd.DataFrame(components.T, columns=['PC1', 'PC2'])
 
-                # Mostrar la gráfica en Streamlit
+                        # Obtener los autovalores
+                        explained_variance = pca.explained_variance_
+
+                        # Crear un DataFrame para los autovalores
+                        eigenvalues_df = pd.DataFrame({
+                            'Component': ['PC1', 'PC2'],
+                            'Eigenvalue': explained_variance
+                        })
+
+                        # Mostrar los resultados en Streamlit
+                        st.write("Componentes PCA:")
+                        st.dataframe(components_df)
+
+                        st.write("Autovalores:")
+                        st.dataframe(eigenvalues_df)
+
+                        # Imprimir la covarianza de las variables con cada componente
+                        st.write("Covarianza de las variables con cada componente:")
+                        st.write("PC1:")
+                        st.dataframe(cov_matrix.dot(components_df['PC1']))
+                        st.write("PC2:")
+                        st.dataframe(cov_matrix.dot(components_df['PC2']))
+
+                        st.write("PCA")
+                        st.dataframe(data_pca)
+
+                        # Preparar los datos para la gráfica
+                        data_pca = pd.DataFrame(data_pca, columns=['PC1', 'PC2'])
+
+                        # Crear y mostrar el gráfico
+                        fig1, ax1 = plt.subplots()
+                        fig1.set_size_inches(10, 6)
+                        sns.scatterplot(x='PC1', y='PC2', hue=data['kmeans_cluster'], palette='dark', data=data_pca, ax=ax1)
+                        ax1.set_title("PCA")
+
+                        # Mostrar el gráfico en Streamlit
+                        st.pyplot(fig1)
+                    else:
+                        columns = st.multiselect("Selecciona dos columnas para el gráfico de dispersión", processed_columns)
+                        if len(columns) == 2:
+
+                            if 'zodiac_sign' in columns:
+                                data_kmeans = zodiac_sing_and_gender_from_num(data)
+                            
+                            fig1.set_size_inches(10, 6)
+                            sns.scatterplot(x=columns[1], y=columns[0], hue=data['kmeans_cluster'], palette='dark', data=data_kmeans, ax=ax1)
+                            ax1.set_title("K-means Clustering")
+                            st.pyplot(fig1)
+                elif len(processed_columns) == 2:
+                    if 'zodiac_sign' in processed_columns:
+                        data_kmeans = zodiac_sing_and_gender_from_num(data)
+                    else:
+                        data_kmeans = data.copy()
+                    fig1.set_size_inches(10, 6)
+                    sns.scatterplot(x=data_kmeans[processed_columns[1]], y=data_kmeans[processed_columns[0]], hue=data_kmeans['kmeans_cluster'], palette='dark', ax=ax1)
+                    ax1.set_title("K-means Clustering")
+                    st.pyplot(fig1)
+                
+                # Procesar con DBSSCAN
+                st.write("Procesar con DBSCAN")
+                eps = st.slider("Epsilon (Distancia para considerar un vecino)", 0.01, 1.0, 0.5, 0.01)
+                min_samples = st.slider("Muestras mínimas (Puntos necesarios para considerar un nucleo)", 2, 10, 5)
+                dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+                data_scan = pd.DataFrame(data_scaled)
+                data_dbscan = dbscan.fit(data_scan)
+                dbscan_labels = data_dbscan.labels_
+                df_dbscan = pd.DataFrame(data_t)
+                df_dbscan['dbscan_cluster'] = dbscan_labels
+                
+                n_clusters_ = len(set(dbscan_labels)) - (1 if -1 in dbscan_labels else 0)
+                n_noise_ = list(dbscan_labels).count(-1) 
+
+                st.write(f"DBSCAN clustering, número de clusters estimado: {n_clusters_}")
+                st.write(f"DBSCAN clustering, número de ruido estimado: {n_noise_}")
+
+                unique_labels = set(dbscan_labels)
+                core_samples_mask = np.zeros_like(dbscan_labels, dtype=bool)
+                core_samples_mask[dbscan.core_sample_indices_] = True
+
+                colors = [plt.cm.Spectral(each) for each in np.linspace(0, 1, len(unique_labels))]
+                for k, col in zip(unique_labels, colors):
+                    if k == -1:
+                        col = [0, 0, 0, 1]
+
+                    class_member_mask = (dbscan_labels == k)
+
+                    xy = data_t[class_member_mask & core_samples_mask]
+                    ax2.plot(xy[:, 0], xy[:, 1], 'o', markerfacecolor=tuple(col), markeredgecolor='k', markersize=14)
+
+                    xy = data_t[class_member_mask & ~core_samples_mask]
+                    ax2.plot(xy[:, 0], xy[:, 1], 'o', markerfacecolor=tuple(col), markeredgecolor='k', markersize=6)
+
+                ax2.set_title('DBSCAN clustering, número de clusters estimado: %d' % n_clusters_)
                 st.pyplot(fig2)
 
                 st.write("Exportar resultados:")
@@ -341,7 +293,6 @@ def main():
                     pdf = FPDF(orientation='L', unit='mm', format='A4')
                     pdf.add_page()
                     pdf.set_font("Arial", size=12)
-                    pdf.cell(200, 10, txt="Resultados de K-means", ln=True, align='C')
                     pdf.ln(20)
 
                     # Guardar las gráficas como archivos temporales
@@ -350,7 +301,6 @@ def main():
                         pdf.image(tmpfile1.name, x=10, y=30, w=180)
 
                     pdf.add_page()
-                    pdf.cell(200, 10, txt="Gráfico del Método del Codo", ln=True, align='C')
                     pdf.ln(20)
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile2:
                         fig2.savefig(tmpfile2.name, format="png")
@@ -395,6 +345,68 @@ def main():
                     pdf_output = "resultados.pdf"
                     pdf.output(pdf_output)
                     st.success("Resultados exportados a resultados.pdf")
+
+                if st.button("Exportar a Excel"):
+                    # Exportar a Excel en diferentes hojas cada dataframe generado con K-means y DBSCAN
+                    with pd.ExcelWriter('resultados.xlsx') as writer:
+                        datos_originales.to_excel(writer, sheet_name='Datos Originales')
+                        data_scaled.to_excel(writer, sheet_name='Datos Standard Scaler')
+
+                        # Si data_t_kmeans_excel tiene zodiac_sign mapearlo a texto
+                        if 'zodiac_sign' in data_t_kmeans_excel.columns:
+                            data_t_kmeans_excel = zodiac_sing_and_gender_from_num(data_t_kmeans_excel)
+
+                        data_t_kmeans_excel.to_excel(writer, sheet_name='K-means')
+
+                        df_dbscan = pd.DataFrame(df_dbscan)
+                        df_dbscan.columns = selected_columns + ['dbscan_cluster']
+                        df_dbscan.to_excel(writer, sheet_name='DBSCAN')
+                        if data_pca is not None:
+                            data_pca.to_excel(writer, sheet_name='PCA')
+                    st.success("Resultados exportados a resultados.xlsx")
+
+
+
+def zodiac_sing_and_gender_to_num(data):
+    # Transformar variables el signo zodical
+    zodiac_signs = {
+        "Aries": 1, "Tauro": 2, "Géminis": 3, "Cáncer": 4, "Leo": 5, "Virgo": 6,
+        "Libra": 7, "Escorpio": 8, "Sagitario": 9, "Capricornio": 10, "Acuario": 11, "Piscis": 12
+    }
+
+    genders = {"Masculino": 0, "Femenino": 1}
+    data['gender'] = data['gender'].map(genders)
+    data['zodiac_sign'] = data['zodiac_sign'].map(zodiac_signs)
+
+    return data
+
+def zodiac_sing_and_gender_from_num(data):
+    # Transformar variables el signo zodical
+    if('zodiac_sign' in data.columns):
+        zodiac_signs = {
+            1: "Aries", 2: "Tauro", 3: "Géminis", 4: "Cáncer", 5: "Leo", 6: "Virgo",
+            7: "Libra", 8: "Escorpio", 9: "Sagitario", 10: "Capricornio", 11: "Acuario", 12: "Piscis"
+        }
+        data['zodiac_sign'] = data['zodiac_sign'].map(zodiac_signs)
+
+    if('gender' in data.columns):
+        genders = {0: "Masculino", 1: "Femenino"}
+        data['gender'] = data['gender'].map(genders)
+
+    return data
+
+def grafico_codo(data):
+    elbow_fig, axElbow = plt.subplots()
+    wcss = []
+    for i in range(1, 12):
+        kmeans = KMeans(n_clusters=i, random_state=0)
+        kmeans.fit(data)
+        wcss.append(kmeans.inertia_)
+    axElbow.plot(range(1, 12), wcss)
+    axElbow.set_title('Método del Codo')
+    axElbow.set_xlabel('Número de clústeres')
+    axElbow.set_ylabel('Inercia')
+    st.pyplot(elbow_fig)
 
 if __name__ == "__main__":
     main()
